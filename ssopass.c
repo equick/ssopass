@@ -163,7 +163,12 @@ int interactive_shell_session(ssh_session session) {
 	if (rc != SSH_OK) return rc;
 
 	char compare[100];
-	sprintf(compare,"[sudo] password for %s:",user);
+	if(!strcmp(priv_type,"sudo")){
+		sprintf(compare,"[sudo] password for %s:",user);
+	}else{
+		sprintf(compare,"Password:");
+	}
+
 	int priv_done=0, priv_issued=0;
 	char priv_cmd[100];
 
