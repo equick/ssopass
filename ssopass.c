@@ -217,7 +217,7 @@ int interactive_shell_session(ssh_session session) {
 						rc=match( compare, buffer, nwritten );
 						if( compare[rc]=='\0' ){
 							sprintf(password,"%s\n",password);
-							nwritten = ssh_channel_write(channel, password, sizeof(password) );
+							nwritten = ssh_channel_write(channel, password, strlen(password) );
 							nwritten=nbytes;
 							priv_done=1;
 						}
