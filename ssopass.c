@@ -7,7 +7,8 @@
 
 #define OPTSTR "+d:einv"
 
-char *host, *user, *priv_user, *priv_type, *password;
+char *host, *user, *priv_user, *priv_type, *password, *jumphost;
+char cmd[200];
 
 int main(int argc, char *argv[]) {
 
@@ -16,11 +17,10 @@ int main(int argc, char *argv[]) {
 	struct termios orig_termios;
 	char pbuff[20];
 
-        while ((c = getopt(argc, argv, "+d:h:p:s:t:u:")) != EOF) {
+        while ((c = getopt(argc, argv, "+d:h:j:p:s:t:u:")) != EOF) {
                 switch (c) {
 		case 'd':               /* file descriptor for passing password */
                         passfd = atoi(optarg);
-			//read( passfd, pbuff, sizeof(pbuff) );
 			int n=read( passfd, pbuff, sizeof(pbuff) );
 			if (n<1){
 				fprintf(stderr,"Error: No value found on fd %d\n",passfd);
@@ -32,6 +32,10 @@ int main(int argc, char *argv[]) {
 
                 case 'h':               /* host */
                         host = optarg;
+                        break;
+
+		case 'j':               /* jump host */
+                        jumphost = optarg;
                         break;
 
                 case 'p':               /* password */
@@ -54,6 +58,19 @@ int main(int argc, char *argv[]) {
 			exit(1);
                 }
         }
+
+	//ssh command
+	int first=1;
+	while(argv[optind]!=NULL){
+		if(first){
+			strcpy(cmd,argv[optind]);
+			first=0;
+		}else{
+			strcat(cmd,argv[optind]);
+		}
+		strcat(cmd," ");
+		optind++;
+	}
 
         if (optind > argc){
                 fprintf(stderr, "usage: ssopass -h host -u user [-p password] -s privileged_user [ -t sudo | pbrun ]\n");
@@ -80,6 +97,13 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Error: Didn't specify the privileged user\n");
                 exit(1);
         }
+	
+	//If priviliges required, default to bash if no command given
+        if(priv_type!=NULL && strlen(cmd)==0){
+                strcpy(cmd,"bash\n");
+        }else{
+		strcat(cmd,"\n");
+	}
 
 	if(password==NULL){
                 password = getpass("Password: ");
@@ -138,6 +162,7 @@ int main(int argc, char *argv[]) {
 }
 
 int match( const char *reference, const char *buffer, ssize_t bufsize );
+ssh_channel jumphost_channel(ssh_session session);
 
 int interactive_shell_session(ssh_session session) {
 	int rc;
@@ -145,10 +170,15 @@ int interactive_shell_session(ssh_session session) {
 	int nbytes;
 	int nwritten;
 
-	ssh_channel channel = ssh_channel_new(session);
+	ssh_channel channel;
+	ssh_session my_jumphost_session;
 
-        if (channel == NULL)
+	channel = ssh_channel_new(session);
+
+        if (channel == NULL){
+		printf("aa.\n");
                 return SSH_ERROR;
+	}
 
         rc = ssh_channel_open_session(channel);
         if (rc != SSH_OK) {
@@ -162,21 +192,42 @@ int interactive_shell_session(ssh_session session) {
 	rc = ssh_channel_request_shell(channel);
 	if (rc != SSH_OK) return rc;
 
-	char compare[100];
-	if(!strcmp(priv_type,"sudo")){
-		sprintf(compare,"[sudo] password for %s:",user);
-	}else{
-		sprintf(compare,"Password:");
-	}
-
-	int priv_done=0, priv_issued=0;
+	int done=0, issued=0;
 	char priv_cmd[100];
+	char compare[100];
 
 	if(priv_user!=NULL){
+		if(!strcmp(priv_type,"sudo")){
+                	sprintf(compare,"[sudo] password for %s:",user);
+        	}else{
+                	sprintf(compare,"Password:");
+        	}
+
 		if(!strcmp(priv_user,"root")){
-			sprintf(priv_cmd,"%s bash\n",priv_type);
+			if(jumphost!=NULL){
+                                if(!strcmp(priv_type,"pbrun")){
+                                        //pbrun -h host cmd
+					sprintf(priv_cmd,"%s -h %s %s",priv_type,host,cmd);
+				}else{
+					//ssh host sudo cmd
+					sprintf(priv_cmd,"ssh -t %s %s %s",host,priv_type,host,cmd);
+				}
+			}else{
+				sprintf(priv_cmd,"%s %s",priv_type,cmd);
+			}
 		}else{
-			sprintf(priv_cmd,"%s -u %s bash\n",priv_type,priv_user);
+			if(jumphost!=NULL){
+				if(!strcmp(priv_type,"pbrun")){
+					//pbrun -h host -u user cmd
+					sprintf(priv_cmd,"%s -h %s -u %s %s",priv_type,host,priv_user,cmd);
+				}else{
+					//ssh host sudo -u user cmd
+					sprintf(priv_cmd,"ssh -t %h %s -u %s %s",host,priv_type,priv_user,cmd);
+				}
+			}else{
+				//run pbrun or sudo -u user cmd	
+				sprintf(priv_cmd,"%s -u %s %s",priv_type,priv_user,cmd);
+			}
 		}
 	}
 
@@ -206,21 +257,28 @@ int interactive_shell_session(ssh_session session) {
 
 				//log in to privileged user account
 				if(priv_type!=NULL){
-					if(!priv_issued){
+					if(!issued){
 						nwritten = ssh_channel_write(channel, priv_cmd, strlen(priv_cmd) );
 						nwritten=nbytes;
-						priv_issued=1;
+						issued=1;
 					}
 
 					//enter password
-					if(priv_issued && !priv_done){
+					if(issued && !done){
 						rc=match( compare, buffer, nwritten );
 						if( compare[rc]=='\0' ){
 							sprintf(password,"%s\n",password);
 							nwritten = ssh_channel_write(channel, password, strlen(password) );
 							nwritten=nbytes;
-							priv_done=1;
+							done=1;
 						}
+					}
+				}else{
+					//issue non privileged command
+					if(!issued){
+						nwritten = ssh_channel_write(channel, cmd, strlen(cmd) );
+                                                nwritten=nbytes;
+						issued=1;
 					}
 				}
 
@@ -260,6 +318,7 @@ int match( const char *reference, const char *buffer, ssize_t bufsize )
 
     return state;
 }
+
 
 
 int show_remote_processes(ssh_session session) {
