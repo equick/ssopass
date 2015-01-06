@@ -5,34 +5,59 @@
 #include <termios.h>
 #include "ttymodes.h"
 
-#define OPTSTR "+d:einv"
+#ifdef DEBUG
+ #define D if(1)
+#else
+ #define D if(0)
+#endif
+
+char cwd[1024];
+FILE *fpdebug;
 
 char *host, *user, *priv_user, *priv_type, *password, *jumphost;
 char cmd[200];
+int interactive=0;
 
 int main(int argc, char *argv[]) {
 
 	ssh_session my_ssh_session;
-	int c, rc, passfd;
+	int c, rc, passfd,i;
+	int verbosity = SSH_LOG_PROTOCOL;
 	struct termios orig_termios;
 	char pbuff[20];
 
-        while ((c = getopt(argc, argv, "+d:h:j:p:s:t:u:")) != EOF) {
+	char debug_log[1024];
+        D getcwd(cwd, sizeof(cwd));
+
+        D sprintf(debug_log,"%s/ssopass_debug.log",cwd);
+
+        D fpdebug=fopen(debug_log, "w+");
+        D fprintf(fpdebug,"cwd=%s\n",cwd);
+        D fflush(fpdebug);
+
+        while ((c = getopt(argc, argv, "+d:h:ij:p:s:t:u:")) != EOF) {
                 switch (c) {
 		case 'd':               /* file descriptor for passing password */
                         passfd = atoi(optarg);
 			int n=read( passfd, pbuff, sizeof(pbuff) );
 			if (n<1){
 				fprintf(stderr,"Error: No value found on fd %d\n",passfd);
+				D fprintf(fpdebug,"Error: No value found on fd %d\n",passfd);
 				exit(1);
 			}	
-			pbuff[n-1]='\0';  /* replace the newline */
+			if (pbuff[n-1]=='\n'){
+				pbuff[n-1]='\0';  /* replace the newline */
+			}
 			password=pbuff;
                         break;
 
                 case 'h':               /* host */
                         host = optarg;
                         break;
+
+		case 'i':		/*interactive*/
+			interactive = 1;
+			break;
 
 		case 'j':               /* jump host */
                         jumphost = optarg;
@@ -118,6 +143,7 @@ int main(int argc, char *argv[]) {
 
 	ssh_options_set(my_ssh_session, SSH_OPTIONS_HOST, host);
 	ssh_options_set(my_ssh_session, SSH_OPTIONS_USER, user);
+	//ssh_options_set(my_ssh_session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
 
 	// Connect to server
 	rc = ssh_connect(my_ssh_session);
@@ -162,7 +188,6 @@ int main(int argc, char *argv[]) {
 }
 
 int match( const char *reference, const char *buffer, ssize_t bufsize );
-ssh_channel jumphost_channel(ssh_session session);
 
 int interactive_shell_session(ssh_session session) {
 	int rc;
@@ -249,10 +274,13 @@ int interactive_shell_session(ssh_session session) {
 		ssh_select(in_channels, out_channels, maxfd, &fds, &timeout);
 
 		if (out_channels[0] != NULL) {
-			nbytes = ssh_channel_read(channel, buffer, sizeof(buffer), 0);
+			//nbytes = ssh_channel_read(channel, buffer, sizeof(buffer), 0);
+			nbytes = ssh_channel_read_nonblocking(channel, buffer, sizeof(buffer), 0);
+
 			if (nbytes < 0) 
 				return SSH_ERROR;
 			if (nbytes > 0) {
+
 				nwritten = write(1, buffer, nbytes);
 
 				//log in to privileged user account
@@ -274,11 +302,11 @@ int interactive_shell_session(ssh_session session) {
 						}
 					}
 				}else{
-					//issue non privileged command
-					if(!issued){
+					//run non privileged command
+					if(!done){
 						nwritten = ssh_channel_write(channel, cmd, strlen(cmd) );
                                                 nwritten=nbytes;
-						issued=1;
+						done=1;
 					}
 				}
 
