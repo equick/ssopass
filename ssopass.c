@@ -124,10 +124,8 @@ int main(int argc, char *argv[]) {
         }
 	
 	//If priviliges required, default to bash if no command given
-        if(priv_type!=NULL && strlen(cmd)==0){
+	if(priv_type!=NULL && strlen(cmd)==0){
                 strcpy(cmd,"bash\n");
-        }else{
-		strcat(cmd,"\n");
 	}
 
 	if(password==NULL){
@@ -167,8 +165,7 @@ int main(int argc, char *argv[]) {
 	// Authenticate ourselves
 	rc = ssh_userauth_password(my_ssh_session, NULL, password);
 	if (rc != SSH_AUTH_SUCCESS) {
-		fprintf(stderr, "Error authenticating with password: %s\n",
-		ssh_get_error(my_ssh_session));
+		fprintf(stderr, "Error authenticating with password: %s\n", ssh_get_error(my_ssh_session));
 		ssh_disconnect(my_ssh_session);
 		ssh_free(my_ssh_session);
 		exit(-1);
@@ -201,7 +198,6 @@ int interactive_shell_session(ssh_session session) {
 	channel = ssh_channel_new(session);
 
         if (channel == NULL){
-		printf("aa.\n");
                 return SSH_ERROR;
 	}
 
