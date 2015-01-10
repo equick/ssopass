@@ -139,7 +139,11 @@ int main(int argc, char *argv[]) {
 	if (my_ssh_session == NULL)
 		exit(-1);
 
-	ssh_options_set(my_ssh_session, SSH_OPTIONS_HOST, host);
+	if(jumphost!=NULL){
+		ssh_options_set(my_ssh_session, SSH_OPTIONS_HOST, jumphost);
+	}else{
+		ssh_options_set(my_ssh_session, SSH_OPTIONS_HOST, host);
+	}
 	ssh_options_set(my_ssh_session, SSH_OPTIONS_USER, user);
 	//ssh_options_set(my_ssh_session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
 
