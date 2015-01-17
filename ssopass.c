@@ -45,11 +45,7 @@ int main(int argc, char *argv[]) {
 				D fprintf(fpdebug,"Error: No value found on fd %d\n",passfd);
 				exit(1);
 			}	
-#ifdef __CYGWIN__
 			pbuff[n]='\0';
-#else
-			pbuff[n-1]='\0';
-#endif
 			password=pbuff;
 			D fprintf(fpdebug,"password: %s.\n",password);
         		D fflush(fpdebug);
@@ -251,7 +247,7 @@ int interactive_shell_session(ssh_session session) {
 					sprintf(priv_cmd,"%s -h %s -u %s %s",priv_type,host,priv_user,cmd);
 				}else{
 					//ssh host sudo -u user cmd
-					sprintf(priv_cmd,"ssh -t %h %s -u %s %s",host,priv_type,priv_user,cmd);
+					sprintf(priv_cmd,"ssh -t %s %s -u %s %s",host,priv_type,priv_user,cmd);
 				}
 			}else{
 				//run pbrun or sudo -u user cmd	
