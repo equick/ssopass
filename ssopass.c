@@ -45,10 +45,14 @@ int main(int argc, char *argv[]) {
 				D fprintf(fpdebug,"Error: No value found on fd %d\n",passfd);
 				exit(1);
 			}	
-			if (pbuff[n-1]=='\n'){
-				pbuff[n-1]='\0';  /* replace the newline */
-			}
+#ifdef __CYGWIN__
+			pbuff[n]='\0';
+#else
+			pbuff[n-1]='\0';
+#endif
 			password=pbuff;
+			D fprintf(fpdebug,"password: %s.\n",password);
+        		D fflush(fpdebug);
                         break;
 
                 case 'h':               /* host */
