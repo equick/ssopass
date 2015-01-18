@@ -45,6 +45,9 @@ int main(int argc, char *argv[]) {
 				D fprintf(fpdebug,"Error: No value found on fd %d\n",passfd);
 				exit(1);
 			}	
+			//remove the newline when passed from the command line
+			if(pbuff[n-1]=='\n')
+				pbuff[n-1]='\0';
 			pbuff[n]='\0';
 			password=pbuff;
 			D fprintf(fpdebug,"password: %s.\n",password);
@@ -193,8 +196,8 @@ int match( const char *reference, const char *buffer, ssize_t bufsize );
 int interactive_shell_session(ssh_session session) {
 	int rc;
 	char buffer[256];
-	int nbytes;
-	int nwritten;
+	int nbytes,pbytes;
+	int nwritten,pwritten;
 
 	ssh_channel channel;
 	ssh_session my_jumphost_session;
@@ -219,22 +222,24 @@ int interactive_shell_session(ssh_session session) {
 
 	int done=0, issued=0;
 	char priv_cmd[100];
-	char *compare;
+	char *prompt;
 	char *loginprompt="assword:";
 	char *sudoprompt="[sudo] password for";
 
+	//Bit of logic here to work out the command to issue depending on sudo or pbrun, and whether it's via a jumpbox
 	if(priv_user!=NULL){
 		if(!strcmp(priv_type,"sudo")){
 			//if this sudo command is via a jumpbox the first prompt will be a login prompt
 			if(jumphost!=NULL){
-				compare=loginprompt;
+				prompt=loginprompt;
 			}else{
-                		compare=sudoprompt;
+                		prompt=sudoprompt;
 			}
         	}else{
-                	compare=loginprompt;
+                	prompt=loginprompt;
         	}
 
+		//running command as root user
 		if(!strcmp(priv_user,"root")){
 			if(jumphost!=NULL){
                                 if(!strcmp(priv_type,"pbrun")){
@@ -247,6 +252,8 @@ int interactive_shell_session(ssh_session session) {
 			}else{
 				sprintf(priv_cmd,"%s %s",priv_type,cmd);
 			}
+
+		//running command as a different user to root
 		}else{
 			if(jumphost!=NULL){
 				if(!strcmp(priv_type,"pbrun")){
@@ -263,6 +270,7 @@ int interactive_shell_session(ssh_session session) {
 		}
 	}
 
+	//This is main section where we parse output, issue the sudo or pbrun command, and enter the password where prompted
 	while (ssh_channel_is_open(channel) && !ssh_channel_is_eof(channel)) {
 		struct timeval timeout;
 		ssh_channel in_channels[2], out_channels[2];
@@ -281,62 +289,70 @@ int interactive_shell_session(ssh_session session) {
 		ssh_select(in_channels, out_channels, maxfd, &fds, &timeout);
 
 		if (out_channels[0] != NULL) {
+
+			//clear buffer and read in line from remote output
 			memset(buffer,0,sizeof(buffer));
-			//nbytes = ssh_channel_read(channel, buffer, sizeof(buffer), 0);
 			nbytes = ssh_channel_read_nonblocking(channel, buffer, sizeof(buffer), 0);
 
 			if (nbytes < 0) 
 				return SSH_ERROR;
 			if (nbytes > 0) {
 
+				//write remote output in buffer to stdout
 				nwritten = write(1, buffer, nbytes);
+				if (nwritten != nbytes)
+                                        return SSH_ERROR;
 
 				//log in to privileged user account
 				if(priv_type!=NULL){
 
-					//sudo -u user cmd requires another password if via jumpbox
-					if(issued && done==1){
-					
-						if(jumphost!=NULL){
-							rc=match( sudoprompt, buffer, strlen(sudoprompt) );
-
-							if( sudoprompt[rc]=='\0' ){
-								nwritten = ssh_channel_write(channel, password, strlen(password) );
-								nwritten=nbytes;
-								done=2;
-							}
-
+					//If running sudo -u user cmd via jumpbox we have another prompt to handle
+					//assuming sudo -u user requires a password
+					if(issued && done==1 && jumphost!=NULL){
+						rc=match( sudoprompt, buffer, strlen(sudoprompt) );
+						if( sudoprompt[rc]=='\0' ){
+							pbytes=strlen(password);
+							pwritten = ssh_channel_write(channel, password, pbytes);
+							done=2;
 						}
 					}
 
-					//enter password
+					//sudo or pbrun command issued, now enter password (assuming user is prompted)
                                         if(issued && !done){
-                                                rc=match( compare, buffer, nwritten );
-                                                if( compare[rc]=='\0' ){
+                                                rc=match( prompt, buffer, nwritten );
+                                                if( prompt[rc]=='\0' ){
                                                         sprintf(password,"%s\n",password);
-                                                        nwritten = ssh_channel_write(channel, password, strlen(password) );
-                                                        nwritten=nbytes;
+							pbytes=strlen(password);
+                                                        pwritten = ssh_channel_write(channel, password, pbytes );
                                                         done=1;
                                                 }
                                         }
 
+					//run the sudo or pbrun command to log in as another user
 					if(!issued){
-                                                nwritten = ssh_channel_write(channel, priv_cmd, strlen(priv_cmd) );
-                                                nwritten=nbytes;
+						pbytes=strlen(priv_cmd);
+                                                pwritten = ssh_channel_write(channel, priv_cmd, pbytes);
                                                 issued=1;
                                         }
 				
 				}else{
 					//run non privileged command
 					if(!done){
-						nwritten = ssh_channel_write(channel, cmd, strlen(cmd) );
-                                                nwritten=nbytes;
+						pbytes=strlen(cmd);
+						pwritten = ssh_channel_write(channel, cmd, pbytes );
+						D fprintf(fpdebug,"pwritten=%d pbytes=%d cmd=%s.\n",pwritten,pbytes,cmd);
+                                        	D fflush(fpdebug);
 						done=1;
 					}
 				}
 
-				if (nwritten != nbytes) 
+				if (pwritten != pbytes){
+					D fprintf(fpdebug,"nwritten=%d pbytes=%d\n",pwritten,pbytes);
+        				D fflush(fpdebug);
 					return SSH_ERROR;
+				}
+
+
 			}
 		}
 
