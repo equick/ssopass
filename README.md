@@ -17,10 +17,11 @@ Examples
 --------
 
 Log into 192.168.1.20 as myuser and sudo to root
-`exec 3<<<mypassword
-`ssopass -h 192.168.1.20 -u quick -d 3 -s root -t sudo
 
 ```
+exec 3<<<mypassword
+ssopass -h 192.168.1.20 -u quick -d 3 -s root -t sudo
+
 Last login: Sat Jan  3 15:52:02 2015 from laptop
 -bash-4.1$ sudo bash
 [sudo] password for quick: 
@@ -28,10 +29,11 @@ Last login: Sat Jan  3 15:52:02 2015 from laptop
 ```
 
 Log into 192.168.1.20 as testuser
-`exec 4<<<mypassword
-`ssopass -h 192.168.1.20 -u quick -d 4 -s testuser -t sudo
 
 ```
+exec 4<<<mypassword
+ssopass -h 192.168.1.20 -u quick -d 4 -s testuser -t sudo
+
 Last login: Sun Jan 18 13:08:21 2015 from laptop
 -bash-4.1$ sudo -u testuser bash
 [sudo] password for quick: 
@@ -39,10 +41,11 @@ Last login: Sun Jan 18 13:08:21 2015 from laptop
 ```
 
 Log into 192.168.1.24 via the jump host 192.168.1.20 and sudo to test user
-`exec 4<<<mypassword
-`ssopass -h 192.168.1.24 -j 192.168.1.20 -u quick -d 4 -s testuser -t sudo
 
 ```
+exec 4<<<mypassword
+ssopass -h 192.168.1.24 -j 192.168.1.20 -u quick -d 4 -s testuser -t sudo
+
 [quick@192.168.1.20 ~]$ ssh -t 192.168.1.24 sudo -u testuser bash
 quick@192.168.1.24's password: 
 [sudo] password for quick: 
@@ -50,20 +53,22 @@ quick@192.168.1.24's password:
 ```
 
 Log into 192.168.1.20 as testuser using powerbroker
-`exec 4<<<mypassword
-`ssopass -h 192.168.1.20 -u quick -d 4 -s testuser -t pbrun
 
 ```
+exec 4<<<mypassword
+ssopass -h 192.168.1.20 -u quick -d 4 -s testuser -t pbrun
+
 -bash-4.1$ pbrun -u testuser bash
 Password:
 [testuser@192.168.1.20]$
 ```
 
 Log into 192.168.1.25 via the powerbroker gateway 192.168.1.20 and become testuser using powerbroker
-`exec 4<<<mypassword
-`ssopass -h 192.168.1.25 -j 192.168.1.20 -u quick -d 4 -s testuser -t pbrun
 
 ```
+exec 4<<<mypassword
+ssopass -h 192.168.1.25 -j 192.168.1.20 -u quick -d 4 -s testuser -t pbrun
+
 [quick@192.168.1.20 ~]$ pbrun -h 192.168.1.24 -u testuser bash
 Password:
 [testuser@192.168.1.24]$
