@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <termios.h>
+#include <sys/ioctl.h>
 #include "ttymodes.h"
 
 #ifdef DEBUG
@@ -202,6 +203,10 @@ int interactive_shell_session(ssh_session session) {
 	ssh_channel channel;
 	ssh_session my_jumphost_session;
 
+	//get the terminal size
+	struct winsize w;
+    	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+
 	channel = ssh_channel_new(session);
 
         if (channel == NULL){
@@ -215,7 +220,7 @@ int interactive_shell_session(ssh_session session) {
 
 	rc = ssh_channel_request_pty(channel);
 	if (rc != SSH_OK) return rc;
-	rc = ssh_channel_change_pty_size(channel, 80, 24);
+	rc = ssh_channel_change_pty_size(channel, w.ws_col, w.ws_row);
 	if (rc != SSH_OK) return rc;
 	rc = ssh_channel_request_shell(channel);
 	if (rc != SSH_OK) return rc;
