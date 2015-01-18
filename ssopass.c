@@ -219,23 +219,30 @@ int interactive_shell_session(ssh_session session) {
 
 	int done=0, issued=0;
 	char priv_cmd[100];
-	char compare[100];
+	char *compare;
+	char *loginprompt="assword:";
+	char *sudoprompt="[sudo] password for";
 
 	if(priv_user!=NULL){
 		if(!strcmp(priv_type,"sudo")){
-                	sprintf(compare,"[sudo] password for %s:",user);
+			//if this sudo command is via a jumpbox the first prompt will be a login prompt
+			if(jumphost!=NULL){
+				compare=loginprompt;
+			}else{
+                		compare=sudoprompt;
+			}
         	}else{
-                	sprintf(compare,"Password:");
+                	compare=loginprompt;
         	}
 
 		if(!strcmp(priv_user,"root")){
 			if(jumphost!=NULL){
                                 if(!strcmp(priv_type,"pbrun")){
                                         //pbrun -h host cmd
-					sprintf(priv_cmd,"%s -h %s %s",priv_type,host,cmd);
+					sprintf(priv_cmd,"pbrun -h %s %s",host,cmd);
 				}else{
 					//ssh host sudo cmd
-					sprintf(priv_cmd,"ssh -t %s %s %s",host,priv_type,host,cmd);
+					sprintf(priv_cmd,"ssh -t %s sudo %s",host,cmd);
 				}
 			}else{
 				sprintf(priv_cmd,"%s %s",priv_type,cmd);
@@ -244,10 +251,10 @@ int interactive_shell_session(ssh_session session) {
 			if(jumphost!=NULL){
 				if(!strcmp(priv_type,"pbrun")){
 					//pbrun -h host -u user cmd
-					sprintf(priv_cmd,"%s -h %s -u %s %s",priv_type,host,priv_user,cmd);
+					sprintf(priv_cmd,"pbrun -h %s -u %s %s",host,priv_user,cmd);
 				}else{
 					//ssh host sudo -u user cmd
-					sprintf(priv_cmd,"ssh -t %s %s -u %s %s",host,priv_type,priv_user,cmd);
+					sprintf(priv_cmd,"ssh -t %s sudo -u %s %s",host,priv_user,cmd);
 				}
 			}else{
 				//run pbrun or sudo -u user cmd	
@@ -274,6 +281,7 @@ int interactive_shell_session(ssh_session session) {
 		ssh_select(in_channels, out_channels, maxfd, &fds, &timeout);
 
 		if (out_channels[0] != NULL) {
+			memset(buffer,0,sizeof(buffer));
 			//nbytes = ssh_channel_read(channel, buffer, sizeof(buffer), 0);
 			nbytes = ssh_channel_read_nonblocking(channel, buffer, sizeof(buffer), 0);
 
@@ -285,22 +293,39 @@ int interactive_shell_session(ssh_session session) {
 
 				//log in to privileged user account
 				if(priv_type!=NULL){
-					if(!issued){
-						nwritten = ssh_channel_write(channel, priv_cmd, strlen(priv_cmd) );
-						nwritten=nbytes;
-						issued=1;
+
+					//sudo -u user cmd requires another password if via jumpbox
+					if(issued && done==1){
+					
+						if(jumphost!=NULL){
+							rc=match( sudoprompt, buffer, strlen(sudoprompt) );
+
+							if( sudoprompt[rc]=='\0' ){
+								nwritten = ssh_channel_write(channel, password, strlen(password) );
+								nwritten=nbytes;
+								done=2;
+							}
+
+						}
 					}
 
 					//enter password
-					if(issued && !done){
-						rc=match( compare, buffer, nwritten );
-						if( compare[rc]=='\0' ){
-							sprintf(password,"%s\n",password);
-							nwritten = ssh_channel_write(channel, password, strlen(password) );
-							nwritten=nbytes;
-							done=1;
-						}
-					}
+                                        if(issued && !done){
+                                                rc=match( compare, buffer, nwritten );
+                                                if( compare[rc]=='\0' ){
+                                                        sprintf(password,"%s\n",password);
+                                                        nwritten = ssh_channel_write(channel, password, strlen(password) );
+                                                        nwritten=nbytes;
+                                                        done=1;
+                                                }
+                                        }
+
+					if(!issued){
+                                                nwritten = ssh_channel_write(channel, priv_cmd, strlen(priv_cmd) );
+                                                nwritten=nbytes;
+                                                issued=1;
+                                        }
+				
 				}else{
 					//run non privileged command
 					if(!done){
